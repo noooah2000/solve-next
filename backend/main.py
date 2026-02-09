@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 from .database import (
     create_db_and_tables,
     get_session,
@@ -11,6 +11,7 @@ from .database import (
 )
 from .schemas import (
     CreateLogRequest,
+    UpdateLogRequest,
     LogResponse,
     RecommendationRequest,
     RecommendationResponse
@@ -45,6 +46,11 @@ def read_root():
             "login": "POST /auth/login",
             "create_log": "POST /logs",
             "get_user_logs": "GET /users/{user_id}/logs",
+            "update_log": "PATCH /logs/{log_id}",
+            "delete_log": "DELETE /logs/{log_id}",
+            "get_trash": "GET /users/{user_id}/logs/trash",
+            "restore_log": "POST /logs/{log_id}/restore",
+            "empty_trash": "DELETE /users/{user_id}/logs/trash/empty",
             "get_recommendations": "POST /recommendations"
         }
     }
@@ -186,24 +192,193 @@ def get_user_logs(
     session: Session = Depends(get_session)
 ):
     """
-    Get all logs for a specific user.
+    Get all active (non-deleted) logs for a specific user.
     
     Args:
         user_id: User ID
         session: Database session
     
     Returns:
-        List of log entries ordered by practice_date descending
+        List of active log entries ordered by practice_date descending
     """
-    # Query all logs for the user, ordered by practice_date descending
+    # Query all active logs for the user (is_deleted == False)
     statement = (
         select(Log)
-        .where(Log.user_id == user_id)
+        .where(Log.user_id == user_id, Log.is_deleted == False)
         .order_by(Log.practice_date.desc())
     )
     logs = session.exec(statement).all()
     
     return logs
+
+
+@app.patch("/logs/{log_id}", response_model=LogResponse)
+def update_log(
+    log_id: int,
+    request: UpdateLogRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Update a specific practice log entry (partial update).
+    
+    Args:
+        log_id: ID of the log to update
+        request: UpdateLogRequest with optional fields to update
+        session: Database session
+    
+    Returns:
+        Updated log entry
+    
+    Raises:
+        HTTPException: 404 if log not found
+    """
+    # Find the log by ID
+    log = session.get(Log, log_id)
+    
+    if not log:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Log with ID {log_id} not found"
+        )
+    
+    # Update only provided fields
+    if request.status is not None:
+        log.status = request.status
+    if request.note is not None:
+        log.note = request.note
+    if request.practice_date is not None:
+        log.practice_date = request.practice_date
+    
+    # Save changes
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+    
+    return log
+
+
+@app.delete("/logs/{log_id}")
+def delete_log(
+    log_id: int,
+    session: Session = Depends(get_session)
+):
+    """
+    Soft delete a specific practice log entry.
+    
+    Args:
+        log_id: ID of the log to delete
+        session: Database session
+    
+    Returns:
+        Success confirmation
+    
+    Raises:
+        HTTPException: 404 if log not found
+    """
+    # Find the log by ID
+    log = session.get(Log, log_id)
+    
+    if not log:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Log with ID {log_id} not found"
+        )
+    
+    # Soft delete: set is_deleted flag to True
+    log.is_deleted = True
+    session.add(log)
+    session.commit()
+    
+    return {"ok": True, "message": "Log moved to trash"}
+
+
+@app.get("/users/{user_id}/logs/trash", response_model=List[LogResponse])
+def get_trash_logs(
+    user_id: int,
+    session: Session = Depends(get_session)
+):
+    """
+    Get all soft-deleted (trashed) logs for a specific user.
+    
+    Args:
+        user_id: User ID
+        session: Database session
+    
+    Returns:
+        List of deleted log entries ordered by practice_date descending
+    """
+    # Query all deleted logs for the user (is_deleted == True)
+    statement = (
+        select(Log)
+        .where(Log.user_id == user_id, Log.is_deleted == True)
+        .order_by(Log.practice_date.desc())
+    )
+    logs = session.exec(statement).all()
+    
+    return logs
+
+
+@app.post("/logs/{log_id}/restore")
+def restore_log(
+    log_id: int,
+    session: Session = Depends(get_session)
+):
+    """
+    Restore a soft-deleted log entry.
+    
+    Args:
+        log_id: ID of the log to restore
+        session: Database session
+    
+    Returns:
+        Success confirmation
+    
+    Raises:
+        HTTPException: 404 if log not found
+    """
+    # Find the log by ID (including deleted ones)
+    log = session.get(Log, log_id)
+    
+    if not log:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Log with ID {log_id} not found"
+        )
+    
+    # Restore: set is_deleted flag to False
+    log.is_deleted = False
+    session.add(log)
+    session.commit()
+    
+    return {"ok": True, "message": "Log restored successfully"}
+
+
+@app.delete("/users/{user_id}/logs/trash/empty")
+def empty_trash(
+    user_id: int,
+    session: Session = Depends(get_session)
+):
+    """
+    Permanently delete all soft-deleted logs for a specific user.
+    
+    Args:
+        user_id: User ID
+        session: Database session
+    
+    Returns:
+        Success confirmation with count of deleted logs
+    """
+    # Count how many logs will be deleted
+    count_statement = select(Log).where(Log.user_id == user_id, Log.is_deleted == True)
+    logs_to_delete = session.exec(count_statement).all()
+    count = len(logs_to_delete)
+    
+    # Permanently delete all soft-deleted logs for this user
+    delete_statement = delete(Log).where(Log.user_id == user_id, Log.is_deleted == True)
+    session.exec(delete_statement)
+    session.commit()
+    
+    return {"ok": True, "message": f"Trash emptied: {count} log(s) permanently deleted"}
 
 
 @app.post("/recommendations", response_model=RecommendationResponse)
