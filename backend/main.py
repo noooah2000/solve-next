@@ -41,6 +41,7 @@ def read_root():
         "message": "Welcome to SolveNext API",
         "version": "1.0.0",
         "endpoints": {
+            "signup": "POST /auth/signup",
             "login": "POST /auth/login",
             "create_log": "POST /logs",
             "get_user_logs": "GET /users/{user_id}/logs",
@@ -49,28 +50,67 @@ def read_root():
     }
 
 
-@app.post("/auth/login")
-def login(username: str, session: Session = Depends(get_session)):
+@app.post("/auth/signup")
+def signup(username: str, session: Session = Depends(get_session)):
     """
-    Login or create a new user.
+    Create a new user account.
     
     Args:
-        username: Username for login
+        username: Username for the new account
         session: Database session
     
     Returns:
         Dictionary with user_id and username
+    
+    Raises:
+        HTTPException: 400 if user already exists
+    """
+    # Check if user already exists
+    statement = select(User).where(User.username == username)
+    existing_user = session.exec(statement).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User '{username}' already exists"
+        )
+    
+    # Create new user
+    user = User(username=username)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    
+    return {
+        "user_id": user.id,
+        "username": user.username
+    }
+
+
+@app.post("/auth/login")
+def login(username: str, session: Session = Depends(get_session)):
+    """
+    Login an existing user.
+    
+    Args:
+        username: Username to login
+        session: Database session
+    
+    Returns:
+        Dictionary with user_id and username
+    
+    Raises:
+        HTTPException: 404 if user not found
     """
     # Check if user exists
     statement = select(User).where(User.username == username)
     user = session.exec(statement).first()
     
-    # Create new user if doesn't exist
     if not user:
-        user = User(username=username)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
+        raise HTTPException(
+            status_code=404,
+            detail=f"User '{username}' not found"
+        )
     
     return {
         "user_id": user.id,
