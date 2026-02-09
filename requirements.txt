@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+google-generativeai
+python-dotenv
+requests
+beautifulsoup4
+streamlit
