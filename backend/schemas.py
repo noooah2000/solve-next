@@ -42,6 +42,15 @@ class CreateLogRequest(BaseModel):
     note: Optional[str] = None
 
 
+class UpdateLogRequest(BaseModel):
+    practice_date: Optional[datetime] = None
+    status: Optional[PracticeStatus] = None
+    note: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
 class RecommendationRequest(BaseModel):
     username: str
     tags: List[TopicTag]
@@ -61,6 +70,8 @@ class LogResponse(BaseModel):
     attempt_count: int
     status: PracticeStatus
     note: Optional[str] = None
+    time_spent: Optional[int] = None
+    is_deleted: bool = False
     
     model_config = ConfigDict(from_attributes=True)
 
