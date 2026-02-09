@@ -112,6 +112,71 @@ def get_user_logs(user_id: int):
         return []
 
 
+def delete_log(log_id: int):
+    """Delete a specific practice log"""
+    try:
+        response = requests.delete(
+            f"{API_BASE_URL}/logs/{log_id}",
+            timeout=5
+        )
+        if response.status_code == 200:
+            return True, "Log deleted successfully!"
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, f"Error: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
+
+def get_trash_logs(user_id: int):
+    """Get user's trashed logs"""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/users/{user_id}/logs/trash",
+            timeout=5
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return []
+    except requests.exceptions.RequestException as e:
+        st.error(f"Connection error: {str(e)}")
+        return []
+
+
+def restore_log(log_id: int):
+    """Restore a soft-deleted log"""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/logs/{log_id}/restore",
+            timeout=5
+        )
+        if response.status_code == 200:
+            return True, "Log restored successfully!"
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, f"Error: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
+
+def empty_trash(user_id: int):
+    """Permanently delete all trash logs"""
+    try:
+        response = requests.delete(
+            f"{API_BASE_URL}/users/{user_id}/logs/trash/empty",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return True, data.get("message", "Trash emptied!")
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, f"Error: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
+
 def get_recommendations(username: str, tags: list, difficulty: str, count: int):
     """Get AI-powered recommendations"""
     try:
@@ -200,7 +265,7 @@ def main():
         
         page = st.radio(
             "Select a page:",
-            ["📝 Write Diary", "📊 History", "🤖 AI Coach"],
+            ["📝 Write Diary", "📊 History", "🗑️ Trash Bin", "🤖 AI Coach"],
             label_visibility="collapsed"
         )
         
@@ -216,6 +281,8 @@ def main():
         show_write_diary()
     elif page == "📊 History":
         show_history()
+    elif page == "🗑️ Trash Bin":
+        show_trash_bin()
     elif page == "🤖 AI Coach":
         show_ai_coach()
 
@@ -276,44 +343,214 @@ def show_history():
         st.info("No practice logs found. Start logging your practice sessions!")
         return
     
-    st.success(f"Found {len(logs)} practice logs")
+    st.success(f"Found {len(logs)} practice logs across {len(set(log['problem_id'] for log in logs))} unique problems")
     
-    # Display logs
+    # Group logs by problem_id
+    from collections import defaultdict
+    grouped_logs = defaultdict(list)
+    
     for log in logs:
+        grouped_logs[log['problem_id']].append(log)
+    
+    # Display grouped logs
+    for problem_id, problem_logs in grouped_logs.items():
+        # Sort attempts by date (newest first)
+        problem_logs_sorted = sorted(
+            problem_logs, 
+            key=lambda x: datetime.fromisoformat(x["practice_date"].replace("Z", "+00:00")),
+            reverse=True
+        )
+        
+        # Get problem info from the first log
+        first_log = problem_logs_sorted[0]
+        
         # Difficulty color coding
         diff_color = {
             "Easy": "🟢",
             "Medium": "🟡",
             "Hard": "🔴"
-        }.get(log["difficulty"], "⚪")
+        }.get(first_log["difficulty"], "⚪")
         
-        # Status emoji
-        status_emoji = {
-            "INDEPENDENT": "✅",
-            "WITH_HINT": "💡",
-            "STUCK": "❌"
-        }.get(log["status"], "📝")
+        # Calculate summary stats
+        total_attempts = len(problem_logs_sorted)
+        last_practiced = datetime.fromisoformat(first_log["practice_date"].replace("Z", "+00:00"))
         
+        # Count status types
+        independent_count = sum(1 for log in problem_logs_sorted if log["status"] == "INDEPENDENT")
+        with_hint_count = sum(1 for log in problem_logs_sorted if log["status"] == "WITH_HINT")
+        stuck_count = sum(1 for log in problem_logs_sorted if log["status"] == "STUCK")
+        
+        # Determine overall mastery emoji
+        if independent_count == total_attempts:
+            mastery_emoji = "🏆"  # All independent
+        elif independent_count > 0:
+            mastery_emoji = "📈"  # Some independent
+        else:
+            mastery_emoji = "🔄"  # Still learning
+        
+        # Main expander title with summary
         with st.expander(
-            f"{diff_color} {log['problem_title']} - Attempt #{log['attempt_count']} {status_emoji}",
+            f"{diff_color} **{first_log['problem_title']}** {mastery_emoji} · {total_attempts} attempt{'s' if total_attempts > 1 else ''} · Last: {last_practiced.strftime('%b %d, %Y')}",
             expanded=False
         ):
-            col1, col2, col3 = st.columns(3)
+            # Summary section
+            col1, col2, col3, col4, col5 = st.columns(5)
             
             with col1:
-                st.metric("Difficulty", log["difficulty"])
+                st.metric("Total Attempts", total_attempts)
             with col2:
-                st.metric("Status", log["status"])
+                st.metric("Difficulty", first_log["difficulty"])
             with col3:
+                st.metric("✅ Independent", independent_count)
+            with col4:
+                st.metric("💡 With Hints", with_hint_count)
+            with col5:
+                st.metric("🆘 Stuck", stuck_count)
+            
+            st.write(f"**Problem ID:** {first_log['problem_id']}")
+            st.write(f"**Tags:** {first_log['tags']}")
+            
+            st.markdown("---")
+            st.markdown("### 📜 Attempt History")
+            
+            # Display each attempt
+            for idx, log in enumerate(problem_logs_sorted, 1):
+                # Status emoji
+                status_emoji = {
+                    "INDEPENDENT": "✅",
+                    "WITH_HINT": "💡",
+                    "STUCK": "❌"
+                }.get(log["status"], "📝")
+                
                 practice_date = datetime.fromisoformat(log["practice_date"].replace("Z", "+00:00"))
-                st.metric("Date", practice_date.strftime("%Y-%m-%d"))
+                
+                # Attempt details with delete button
+                attempt_header_col1, attempt_header_col2 = st.columns([5, 1])
+                with attempt_header_col1:
+                    st.markdown(f"**Attempt #{log['attempt_count']}** {status_emoji} · {practice_date.strftime('%Y-%m-%d %H:%M')}")
+                with attempt_header_col2:
+                    if st.button("🗑️", key=f"delete_{log['id']}", help="Delete this log", type="secondary"):
+                        success, message = delete_log(log['id'])
+                        if success:
+                            st.toast("Log deleted successfully!", icon="✅")
+                            st.rerun()
+                        else:
+                            st.error(message)
+                
+                attempt_col1, attempt_col2 = st.columns([1, 3])
+                with attempt_col1:
+                    st.write(f"**Status:** {log['status']}")
+                with attempt_col2:
+                    if log.get("note"):
+                        st.write(f"**Notes:** {log['note']}")
+                    else:
+                        st.write("*No notes*")
+                
+                if idx < len(problem_logs_sorted):
+                    st.markdown("---")
+
+
+def show_trash_bin():
+    """Trash Bin page"""
+    st.header("🗑️ Trash Bin")
+    st.markdown("Deleted logs can be restored from here")
+    
+    with st.spinner("Loading trash..."):
+        trash_logs = get_trash_logs(st.session_state.user_id)
+    
+    if not trash_logs:
+        st.info("🎉 Trash is empty! All your logs are safe and sound.")
+        return
+    
+    st.warning(f"Found {len(trash_logs)} deleted log(s)")
+    
+    # Empty Trash button
+    if st.button("🗑️ Empty Trash Permanently", type="primary", help="Permanently delete all items in trash"):
+        with st.spinner("Emptying trash..."):
+            success, message = empty_trash(st.session_state.user_id)
+            if success:
+                st.toast(message, icon="✅")
+                st.rerun()
+            else:
+                st.error(message)
+    
+    st.markdown("---")
+    
+    # Group trash logs by problem_id (similar to history page)
+    from collections import defaultdict
+    grouped_trash = defaultdict(list)
+    
+    for log in trash_logs:
+        grouped_trash[log['problem_id']].append(log)
+    
+    # Display grouped trash logs
+    for problem_id, problem_logs in grouped_trash.items():
+        # Sort attempts by date (newest first)
+        problem_logs_sorted = sorted(
+            problem_logs, 
+            key=lambda x: datetime.fromisoformat(x["practice_date"].replace("Z", "+00:00")),
+            reverse=True
+        )
+        
+        # Get problem info from the first log
+        first_log = problem_logs_sorted[0]
+        
+        # Difficulty color coding
+        diff_color = {
+            "Easy": "🟢",
+            "Medium": "🟡",
+            "Hard": "🔴"
+        }.get(first_log["difficulty"], "⚪")
+        
+        total_attempts = len(problem_logs_sorted)
+        last_deleted = datetime.fromisoformat(first_log["practice_date"].replace("Z", "+00:00"))
+        
+        # Main expander for each problem
+        with st.expander(
+            f"{diff_color} **{first_log['problem_title']}** · {total_attempts} deleted attempt{'s' if total_attempts > 1 else ''} · Last: {last_deleted.strftime('%b %d, %Y')}",
+            expanded=False
+        ):
+            st.write(f"**Problem ID:** {first_log['problem_id']}")
+            st.write(f"**Tags:** {first_log['tags']}")
             
-            st.write(f"**Problem ID:** {log['problem_id']}")
-            st.write(f"**Tags:** {log['tags']}")
+            st.markdown("---")
+            st.markdown("### 📜 Deleted Attempts")
             
-            if log.get("note"):
-                st.markdown("**Notes:**")
-                st.info(log["note"])
+            # Display each deleted attempt
+            for idx, log in enumerate(problem_logs_sorted, 1):
+                # Status emoji
+                status_emoji = {
+                    "INDEPENDENT": "✅",
+                    "WITH_HINT": "💡",
+                    "STUCK": "❌"
+                }.get(log["status"], "📝")
+                
+                practice_date = datetime.fromisoformat(log["practice_date"].replace("Z", "+00:00"))
+                
+                # Attempt details with restore button
+                attempt_header_col1, attempt_header_col2 = st.columns([5, 1])
+                with attempt_header_col1:
+                    st.markdown(f"**Attempt #{log['attempt_count']}** {status_emoji} · {practice_date.strftime('%Y-%m-%d %H:%M')}")
+                with attempt_header_col2:
+                    if st.button("♻️", key=f"restore_{log['id']}", help="Restore this log", type="primary"):
+                        success, message = restore_log(log['id'])
+                        if success:
+                            st.toast("Log restored!", icon="♻️")
+                            st.rerun()
+                        else:
+                            st.error(message)
+                
+                attempt_col1, attempt_col2 = st.columns([1, 3])
+                with attempt_col1:
+                    st.write(f"**Status:** {log['status']}")
+                with attempt_col2:
+                    if log.get("note"):
+                        st.write(f"**Notes:** {log['note']}")
+                    else:
+                        st.write("*No notes*")
+                
+                if idx < len(problem_logs_sorted):
+                    st.markdown("---")
 
 
 def show_ai_coach():

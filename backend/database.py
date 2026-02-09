@@ -30,6 +30,7 @@ class Log(SQLModel, table=True):
     attempt_count: int = Field(default=1)
     status: PracticeStatus
     note: Optional[str] = None
+    is_deleted: bool = Field(default=False)  # Soft delete flag
     
     # Relationship
     user: Optional[User] = Relationship(back_populates="logs")

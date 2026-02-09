@@ -61,6 +61,7 @@ class LogResponse(BaseModel):
     attempt_count: int
     status: PracticeStatus
     note: Optional[str] = None
+    is_deleted: bool = False
     
     model_config = ConfigDict(from_attributes=True)
 
