@@ -8,9 +8,9 @@ load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    print("❌ Error: GEMINI_API_KEY not found, please check your .env file")
+    print("Error: GEMINI_API_KEY not found, please check your .env file")
 else:
-    print(f"✅ API Key loaded: {api_key[:5]}...")
+    print(f"API Key loaded: {api_key[:5]}...")
     
     # 2. Configure API
     genai.configure(api_key=api_key)
@@ -25,6 +25,6 @@ else:
                 found = True
         
         if not found:
-            print("❌ Strange, no models supporting text generation were found.")
+            print("Strange, no models supporting text generation were found.")
     except Exception as e:
-        print(f"❌ Query failed: {e}")
+        print(f"Query failed: {e}")

@@ -1,9 +1,18 @@
 import streamlit as st
-import requests
 from datetime import datetime
-
-# Backend API base URL
-API_BASE_URL = "http://127.0.0.1:8000"
+from api_client import (
+    check_backend_connection,
+    signup,
+    login,
+    create_log,
+    get_user_logs,
+    delete_log,
+    get_trash_logs,
+    restore_log,
+    empty_trash,
+    update_log,
+    get_recommendations
+)
 
 # Page configuration
 st.set_page_config(
@@ -19,53 +28,6 @@ if "username" not in st.session_state:
     st.session_state.username = None
 
 
-def check_backend_connection():
-    """Check if backend server is running"""
-    try:
-        response = requests.get(f"{API_BASE_URL}/", timeout=2)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
-        return False
-
-
-def signup(username: str):
-    """Sign up a new user via backend API"""
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/auth/signup",
-            params={"username": username},
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            return True, data, "Account created successfully!"
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, None, f"Sign up failed: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, None, f"Connection error: {str(e)}"
-
-
-def login(username: str):
-    """Login user via backend API"""
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/auth/login",
-            params={"username": username},
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            st.session_state.user_id = data["user_id"]
-            st.session_state.username = data["username"]
-            return True, "Login successful!"
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, f"Login failed: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
-
-
 def logout():
     """Logout user"""
     st.session_state.user_id = None
@@ -73,153 +35,45 @@ def logout():
     st.rerun()
 
 
-def create_log(username: str, problem_slug: str, status: str, note: str):
-    """Create a new practice log"""
-    try:
-        payload = {
-            "username": username,
-            "problem_slug": problem_slug,
-            "status": status,
-            "note": note if note else None
-        }
-        response = requests.post(
-            f"{API_BASE_URL}/logs",
-            json=payload,
-            timeout=10
-        )
-        if response.status_code == 200:
-            return True, "Log saved successfully!"
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, f"Error: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
-
-
-def get_user_logs(user_id: int):
-    """Get user's practice history"""
-    try:
-        response = requests.get(
-            f"{API_BASE_URL}/users/{user_id}/logs",
-            timeout=5
-        )
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return []
-    except requests.exceptions.RequestException as e:
-        st.error(f"Connection error: {str(e)}")
-        return []
-
-
-def delete_log(log_id: int):
-    """Delete a specific practice log"""
-    try:
-        response = requests.delete(
-            f"{API_BASE_URL}/logs/{log_id}",
-            timeout=5
-        )
-        if response.status_code == 200:
-            return True, "Log deleted successfully!"
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, f"Error: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
-
-
-def get_trash_logs(user_id: int):
-    """Get user's trashed logs"""
-    try:
-        response = requests.get(
-            f"{API_BASE_URL}/users/{user_id}/logs/trash",
-            timeout=5
-        )
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return []
-    except requests.exceptions.RequestException as e:
-        st.error(f"Connection error: {str(e)}")
-        return []
-
-
-def restore_log(log_id: int):
-    """Restore a soft-deleted log"""
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/logs/{log_id}/restore",
-            timeout=5
-        )
-        if response.status_code == 200:
-            return True, "Log restored successfully!"
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, f"Error: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
-
-
-def empty_trash(user_id: int):
-    """Permanently delete all trash logs"""
-    try:
-        response = requests.delete(
-            f"{API_BASE_URL}/users/{user_id}/logs/trash/empty",
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            return True, data.get("message", "Trash emptied!")
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, f"Error: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
-
-
-def update_log(log_id: int, status: str, practice_date: str, note: str):
-    """Update a practice log"""
-    try:
-        payload = {
-            "status": status,
-            "practice_date": practice_date,
-            "note": note if note else None
-        }
-        response = requests.patch(
-            f"{API_BASE_URL}/logs/{log_id}",
-            json=payload,
-            timeout=5
-        )
-        if response.status_code == 200:
-            return True, "Log updated successfully!"
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, f"Error: {error_detail}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
-
-
-def get_recommendations(username: str, tags: list, difficulty: str, count: int):
-    """Get AI-powered recommendations"""
-    try:
-        payload = {
-            "username": username,
-            "tags": tags,
-            "difficulty": difficulty,
-            "count": count
-        }
-        response = requests.post(
-            f"{API_BASE_URL}/recommendations",
-            json=payload,
-            timeout=30
-        )
-        if response.status_code == 200:
-            return True, response.json()
-        else:
-            error_detail = response.json().get("detail", response.text)
-            return False, error_detail
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection error: {str(e)}"
+def extract_slug_from_input(user_input: str) -> str:
+    """
+    Extract problem slug from user input.
+    
+    Handles three cases:
+    1. Full LeetCode URL: https://leetcode.com/problems/two-sum/description/ → two-sum
+    2. Slug only: two-sum → two-sum
+    3. Numeric ID: 2911 → 2911 (warning shown)
+    
+    Args:
+        user_input: Raw user input (URL or slug)
+    
+    Returns:
+        Extracted slug or original input
+    """
+    user_input = user_input.strip()
+    
+    # Check if it's a LeetCode URL
+    if "leetcode.com/problems/" in user_input.lower():
+        # Extract slug between /problems/ and the next /
+        try:
+            start_idx = user_input.lower().index("leetcode.com/problems/") + len("leetcode.com/problems/")
+            remaining = user_input[start_idx:]
+            # Get everything up to the next / or end of string
+            end_idx = remaining.find("/")
+            if end_idx != -1:
+                slug = remaining[:end_idx]
+            else:
+                slug = remaining
+            return slug.strip()
+        except (ValueError, IndexError):
+            return user_input
+    
+    # Check if input is purely numeric (problem ID)
+    if user_input.isdigit():
+        return user_input
+    
+    # Otherwise treat as slug
+    return user_input
 
 
 # Dialog for editing logs
@@ -310,8 +164,10 @@ def main():
             if auth_mode == "Login":
                 if st.button("Login", type="primary", use_container_width=True):
                     if username.strip():
-                        success, message = login(username.strip())
+                        success, user_data, message = login(username.strip())
                         if success:
+                            st.session_state.user_id = user_data["user_id"]
+                            st.session_state.username = user_data["username"]
                             st.success(message)
                             st.rerun()
                         else:
@@ -376,10 +232,10 @@ def show_write_diary():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        problem_slug = st.text_input(
-            "Problem Slug",
-            placeholder="e.g., two-sum, best-time-to-buy-and-sell-stock",
-            help="The URL slug from LeetCode problem URL"
+        problem_input = st.text_input(
+            "Problem Link",
+            placeholder="e.g., https://leetcode.com/problems/two-sum/",
+            help="Paste the full URL of the LeetCode problem"
         )
     
     with col2:
@@ -396,11 +252,15 @@ def show_write_diary():
     )
     
     if st.button("Save Log", type="primary", use_container_width=True):
-        if problem_slug.strip():
+        if problem_input.strip():
+            # Extract slug from input
+            slug = extract_slug_from_input(problem_input)
+            st.caption(f"🔍 Detected Slug: `{slug}`")
+            
             with st.spinner("Saving log..."):
                 success, message = create_log(
                     st.session_state.username,
-                    problem_slug.strip(),
+                    slug,
                     status,
                     note.strip()
                 )
@@ -410,7 +270,7 @@ def show_write_diary():
                 else:
                     st.error(message)
         else:
-            st.warning("Please enter a problem slug")
+            st.warning("Please enter a problem link or slug")
 
 
 def show_history():
@@ -454,41 +314,20 @@ def show_history():
         
         # Calculate summary stats
         total_attempts = len(problem_logs_sorted)
-        last_practiced = datetime.fromisoformat(first_log["practice_date"].replace("Z", "+00:00"))
-        
-        # Count status types
-        independent_count = sum(1 for log in problem_logs_sorted if log["status"] == "INDEPENDENT")
-        with_hint_count = sum(1 for log in problem_logs_sorted if log["status"] == "WITH_HINT")
-        stuck_count = sum(1 for log in problem_logs_sorted if log["status"] == "STUCK")
-        
-        # Determine overall mastery emoji
-        if independent_count == total_attempts:
-            mastery_emoji = "🏆"  # All independent
-        elif independent_count > 0:
-            mastery_emoji = "📈"  # Some independent
-        else:
-            mastery_emoji = "🔄"  # Still learning
         
         # Main expander title with summary
         with st.expander(
-            f"{diff_color} **{first_log['problem_title']}** {mastery_emoji} · {total_attempts} attempt{'s' if total_attempts > 1 else ''} · Last: {last_practiced.strftime('%b %d, %Y')}",
+            f"{diff_color} {first_log['problem_id']}. **{first_log['problem_title']}**",
             expanded=False
         ):
             # Summary section
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3 = st.columns([1, 1, 3])
             
             with col1:
                 st.metric("Total Attempts", total_attempts)
             with col2:
                 st.metric("Difficulty", first_log["difficulty"])
-            with col3:
-                st.metric("✅ Independent", independent_count)
-            with col4:
-                st.metric("💡 With Hints", with_hint_count)
-            with col5:
-                st.metric("🆘 Stuck", stuck_count)
             
-            st.write(f"**Problem ID:** {first_log['problem_id']}")
             st.write(f"**Tags:** {first_log['tags']}")
             
             st.markdown("---")
@@ -586,15 +425,11 @@ def show_trash_bin():
             "Hard": "🔴"
         }.get(first_log["difficulty"], "⚪")
         
-        total_attempts = len(problem_logs_sorted)
-        last_deleted = datetime.fromisoformat(first_log["practice_date"].replace("Z", "+00:00"))
-        
         # Main expander for each problem
         with st.expander(
-            f"{diff_color} **{first_log['problem_title']}** · {total_attempts} deleted attempt{'s' if total_attempts > 1 else ''} · Last: {last_deleted.strftime('%b %d, %Y')}",
+            f"{diff_color} {first_log['problem_id']}. **{first_log['problem_title']}**",
             expanded=False
         ):
-            st.write(f"**Problem ID:** {first_log['problem_id']}")
             st.write(f"**Tags:** {first_log['tags']}")
             
             st.markdown("---")
