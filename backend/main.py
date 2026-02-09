@@ -414,3 +414,31 @@ def get_recommendations(
     )
     
     return recommendations
+
+@app.post("/recommendations/hints")
+def get_problem_hints(
+    request: dict,
+    session: Session = Depends(get_session)
+):
+    """
+    Get AI-generated hints for a specific LeetCode problem.
+    
+    Args:
+        request: Dictionary with problem_title
+        session: Database session
+    
+    Returns:
+        Dictionary with list of 3 progressive hints
+    """
+    problem_title = request.get("problem_title")
+    
+    if not problem_title:
+        raise HTTPException(
+            status_code=400,
+            detail="problem_title is required"
+        )
+    
+    # Generate hints using AI service
+    hints = ai_service.get_problem_hints(problem_title)
+    
+    return hints

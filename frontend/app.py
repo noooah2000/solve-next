@@ -11,7 +11,8 @@ from api_client import (
     restore_log,
     empty_trash,
     update_log,
-    get_recommendations
+    get_recommendations,
+    get_ai_hints
 )
 
 # Page configuration
@@ -485,6 +486,10 @@ def show_ai_coach():
         "Stack", "Queue", "Heap", "Trie", "Sliding Window", "Two Pointers"
     ]
     
+    # Initialize recommendations in session state if not present
+    if "recommendations" not in st.session_state:
+        st.session_state.recommendations = None
+    
     # "Select All Tags" checkbox
     use_all_tags = st.checkbox("📌 Select All Tags", value=False, help="Toggle to select all tags or choose specific tags")
     
@@ -532,34 +537,85 @@ def show_ai_coach():
             )
         
         if success:
-            # Display advice
-            st.markdown("### 💡 Personalized Advice")
-            st.info(result["advice"])
-            
-            # Display recommended problems
-            st.markdown("### 📚 Recommended Problems")
-            
-            if result["problems"]:
-                for idx, problem in enumerate(result["problems"], 1):
-                    with st.container():
-                        st.markdown(f"#### {idx}. {problem['problem_title']}")
-                        
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.write(f"**Reason:** {problem['reason']}")
-                            st.write(f"**Difficulty:** {problem['difficulty']}")
-                        with col2:
-                            st.link_button(
-                                "Solve on LeetCode →",
-                                problem['leetcode_url'],
-                                use_container_width=True
-                            )
-                        
-                        st.markdown("---")
-            else:
-                st.warning("No problems recommended. Try adjusting your filters.")
+            # Save recommendations to session state
+            st.session_state.recommendations = result
         else:
             st.error(f"Failed to get recommendations: {result}")
+            st.session_state.recommendations = None
+    
+    # Display recommendations from session state (persists across reruns)
+    if st.session_state.recommendations:
+        result = st.session_state.recommendations
+        
+        # Display advice
+        st.markdown("### 💡 Personalized Advice")
+        st.info(result["advice"])
+        
+        # Display recommended problems
+        st.markdown("### 📚 Recommended Problems")
+        
+        if result["problems"]:
+            for idx, problem in enumerate(result["problems"], 1):
+                with st.container():
+                    st.markdown(f"#### {idx}. {problem['problem_title']}")
+                    
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.write(f"**Reason:** {problem['reason']}")
+                        st.write(f"**Difficulty:** {problem['difficulty']}")
+                    with col2:
+                        st.link_button(
+                            "Solve on LeetCode →",
+                            problem['leetcode_url'],
+                            use_container_width=True
+                        )
+                    
+                    # Hints feature with session state
+                    problem_title = problem['problem_title']
+                    hints_key = f"hints_{problem_title.replace(' ', '_')}"
+                    
+                    # Check if hints already exist
+                    has_hints = hints_key in st.session_state and st.session_state[hints_key]
+                    
+                    # Create two columns for button and spacing
+                    hint_col1, hint_col2 = st.columns([2, 2])
+                    
+                    with hint_col1:
+                        # Show "Ask AI" or "Ask AI again" button based on state
+                        button_label = "🔄 Ask AI Again" if has_hints else "✨ Ask AI for Hints"
+                        if st.button(button_label, key=f"hint_btn_{problem_title.replace(' ', '_')}", use_container_width=True):
+                            with st.spinner("Generating AI hints..."):
+                                success, hints, message = get_ai_hints(problem_title)
+                                if success:
+                                    st.session_state[hints_key] = hints
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+                    
+                    # Display hints with progressive disclosure if they exist
+                    if has_hints:
+                        hints = st.session_state[hints_key]
+                        st.markdown("**🤖 AI-Generated Hints:**")
+                        
+                        # Create three progressive hint expanders with AI labels
+                        hint_labels = [
+                            ("🤖 AI Hint 1: High-level Concept", "Conceptual approach and strategy"),
+                            ("🤖 AI Hint 2: Strategic Approach", "Data structure or algorithm suggestion"),
+                            ("🤖 AI Hint 3: Implementation Detail", "Key logic step or pseudo-code")
+                        ]
+                        
+                        for hint_idx, (label, description) in enumerate(hint_labels):
+                            if hint_idx < len(hints):
+                                with st.expander(label, expanded=False):
+                                    st.write(hints[hint_idx])
+                                    st.caption(description)
+                        
+                        # Add disclaimer about AI-generated content
+                        st.caption("💡 AI-generated hints may be imperfect. Use them as a guide.")
+                    
+                    st.markdown("---")
+        else:
+            st.warning("No problems recommended. Try adjusting your filters.")
 
 
 if __name__ == "__main__":

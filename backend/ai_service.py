@@ -171,3 +171,63 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
             advice="An error occurred while generating recommendations. Please try again later.",
             problems=[]
         )
+
+def get_problem_hints(problem_title: str) -> dict:
+    """
+    Generate 3 progressive hints for a LeetCode problem.
+    
+    Args:
+        problem_title: Title of the LeetCode problem
+    
+    Returns:
+        Dictionary with list of 3 hints
+    """
+    prompt = f"""You are an expert LeetCode coach. Provide 3 progressive hints for solving this LeetCode problem: "{problem_title}"
+
+The hints should be:
+1. Hint 1: High-level conceptual approach (no code, just the general strategy)
+2. Hint 2: Specific data structure or algorithm to use
+3. Hint 3: Key logic step or pseudo-code guidance
+
+Return your response in PURE JSON format (no markdown, no code blocks) with this exact structure:
+{{
+    "hints": [
+        "Hint 1: [conceptual approach]",
+        "Hint 2: [data structure/algorithm]",
+        "Hint 3: [key logic step]"
+    ]
+}}
+
+IMPORTANT: Return ONLY the JSON object, nothing else."""
+
+    try:
+        # Generate response from Gemini
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            lines = response_text.split("\n")
+            response_text = "\n".join(lines[1:-1])
+        
+        # Parse JSON
+        data = json.loads(response_text)
+        
+        return {
+            "hints": data.get("hints", [
+                "Try breaking down the problem into smaller steps.",
+                "Consider what data structure would help you track information efficiently.",
+                "Think about the time complexity of your approach."
+            ])
+        }
+    
+    except Exception as e:
+        print(f"Error generating hints: {e}")
+        # Return fallback hints
+        return {
+            "hints": [
+                "Start by understanding the input and output requirements clearly.",
+                "Think about which data structure (array, hash map, stack, etc.) fits this problem.",
+                "Consider edge cases and how your solution handles them."
+            ]
+        }
