@@ -177,6 +177,28 @@ def empty_trash(user_id: int):
         return False, f"Connection error: {str(e)}"
 
 
+def update_log(log_id: int, status: str, practice_date: str, note: str):
+    """Update a practice log"""
+    try:
+        payload = {
+            "status": status,
+            "practice_date": practice_date,
+            "note": note if note else None
+        }
+        response = requests.patch(
+            f"{API_BASE_URL}/logs/{log_id}",
+            json=payload,
+            timeout=5
+        )
+        if response.status_code == 200:
+            return True, "Log updated successfully!"
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, f"Error: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
+
 def get_recommendations(username: str, tags: list, difficulty: str, count: int):
     """Get AI-powered recommendations"""
     try:
@@ -198,6 +220,65 @@ def get_recommendations(username: str, tags: list, difficulty: str, count: int):
             return False, error_detail
     except requests.exceptions.RequestException as e:
         return False, f"Connection error: {str(e)}"
+
+
+# Dialog for editing logs
+@st.dialog("✏️ Edit Log")
+def edit_log_dialog(log: dict):
+    """Dialog to edit a log entry"""
+    with st.form("edit_log_form"):
+        st.write(f"**Problem:** {log['problem_title']}")
+        st.caption(f"Difficulty: {log.get('difficulty', 'Unknown')}")
+        
+        # Parse current date from ISO string
+        current_date_str = log.get("practice_date", "")
+        try:
+            current_datetime = datetime.fromisoformat(current_date_str.replace("Z", "+00:00"))
+            current_date = current_datetime.date()
+        except:
+            current_date = datetime.now().date()
+        
+        # Date picker
+        practice_date = st.date_input(
+            "Date",
+            value=current_date,
+            help="When did you practice this problem?"
+        )
+        
+        # Status selectbox
+        current_status = log.get("status", "INDEPENDENT")
+        status = st.selectbox(
+            "Status",
+            ["INDEPENDENT", "WITH_HINT", "STUCK"],
+            index=["INDEPENDENT", "WITH_HINT", "STUCK"].index(current_status),
+            help="How did you solve this problem?"
+        )
+        
+        # Note textarea
+        note = st.text_area(
+            "Notes (Optional)",
+            value=log.get("note", ""),
+            placeholder="Add any notes about this attempt...",
+            height=120
+        )
+        
+        # Submit button
+        if st.form_submit_button("Save Changes", type="primary", use_container_width=True):
+            # Convert date to ISO 8601 datetime string
+            practice_datetime = datetime.combine(practice_date, datetime.min.time())
+            practice_datetime_str = practice_datetime.isoformat() + "Z"
+            
+            success, message = update_log(
+                log['id'],
+                status,
+                practice_datetime_str,
+                note
+            )
+            if success:
+                st.toast("Log updated successfully!", icon="✅")
+                st.rerun()
+            else:
+                st.error(message)
 
 
 # Main App Logic
@@ -424,11 +505,14 @@ def show_history():
                 
                 practice_date = datetime.fromisoformat(log["practice_date"].replace("Z", "+00:00"))
                 
-                # Attempt details with delete button
-                attempt_header_col1, attempt_header_col2 = st.columns([5, 1])
+                # Attempt details with edit and delete buttons
+                attempt_header_col1, attempt_header_col2, attempt_header_col3 = st.columns([4, 1, 1])
                 with attempt_header_col1:
                     st.markdown(f"**Attempt #{log['attempt_count']}** {status_emoji} · {practice_date.strftime('%Y-%m-%d %H:%M')}")
                 with attempt_header_col2:
+                    if st.button("✏️", key=f"edit_{log['id']}", help="Edit this log", type="secondary"):
+                        edit_log_dialog(log)
+                with attempt_header_col3:
                     if st.button("🗑️", key=f"delete_{log['id']}", help="Delete this log", type="secondary"):
                         success, message = delete_log(log['id'])
                         if success:

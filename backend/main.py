@@ -11,6 +11,7 @@ from .database import (
 )
 from .schemas import (
     CreateLogRequest,
+    UpdateLogRequest,
     LogResponse,
     RecommendationRequest,
     RecommendationResponse
@@ -45,6 +46,7 @@ def read_root():
             "login": "POST /auth/login",
             "create_log": "POST /logs",
             "get_user_logs": "GET /users/{user_id}/logs",
+            "update_log": "PATCH /logs/{log_id}",
             "delete_log": "DELETE /logs/{log_id}",
             "get_trash": "GET /users/{user_id}/logs/trash",
             "restore_log": "POST /logs/{log_id}/restore",
@@ -208,6 +210,51 @@ def get_user_logs(
     logs = session.exec(statement).all()
     
     return logs
+
+
+@app.patch("/logs/{log_id}", response_model=LogResponse)
+def update_log(
+    log_id: int,
+    request: UpdateLogRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Update a specific practice log entry (partial update).
+    
+    Args:
+        log_id: ID of the log to update
+        request: UpdateLogRequest with optional fields to update
+        session: Database session
+    
+    Returns:
+        Updated log entry
+    
+    Raises:
+        HTTPException: 404 if log not found
+    """
+    # Find the log by ID
+    log = session.get(Log, log_id)
+    
+    if not log:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Log with ID {log_id} not found"
+        )
+    
+    # Update only provided fields
+    if request.status is not None:
+        log.status = request.status
+    if request.note is not None:
+        log.note = request.note
+    if request.practice_date is not None:
+        log.practice_date = request.practice_date
+    
+    # Save changes
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+    
+    return log
 
 
 @app.delete("/logs/{log_id}")
