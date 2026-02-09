@@ -485,15 +485,22 @@ def show_ai_coach():
         "Stack", "Queue", "Heap", "Trie", "Sliding Window", "Two Pointers"
     ]
     
+    # "Select All Tags" checkbox
+    use_all_tags = st.checkbox("📌 Select All Tags", value=False, help="Toggle to select all tags or choose specific tags")
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        selected_tags = st.multiselect(
-            "Topic Tags",
-            available_tags,
-            default=["Array"],
-            help="Select topics you want to practice"
-        )
+        if use_all_tags:
+            selected_tags = available_tags
+            st.info(f"Using all {len(available_tags)} tags")
+        else:
+            selected_tags = st.multiselect(
+                "Topic Tags",
+                available_tags,
+                default=["Array"],
+                help="Select topics you want to practice"
+            )
     
     with col2:
         difficulty = st.selectbox(
