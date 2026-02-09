@@ -201,3 +201,22 @@ def get_recommendations(username: str, tags: list, difficulty: str, count: int):
             return False, error_detail
     except requests.exceptions.RequestException as e:
         return False, f"Connection error: {str(e)}"
+
+
+def get_ai_hints(problem_title: str):
+    """Get AI-generated hints for a specific problem"""
+    try:
+        payload = {"problem_title": problem_title}
+        response = requests.post(
+            f"{API_BASE_URL}/recommendations/hints",
+            json=payload,
+            timeout=30
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return True, data.get("hints", []), "Hints generated successfully!"
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, [], f"Error: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, [], f"Connection error: {str(e)}"
