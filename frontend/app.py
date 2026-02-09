@@ -28,6 +28,24 @@ def check_backend_connection():
         return False
 
 
+def signup(username: str):
+    """Sign up a new user via backend API"""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/signup",
+            params={"username": username},
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return True, data, "Account created successfully!"
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, None, f"Sign up failed: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, None, f"Connection error: {str(e)}"
+
+
 def login(username: str):
     """Login user via backend API"""
     try:
@@ -42,7 +60,8 @@ def login(username: str):
             st.session_state.username = data["username"]
             return True, "Login successful!"
         else:
-            return False, f"Login failed: {response.text}"
+            error_detail = response.json().get("detail", response.text)
+            return False, f"Login failed: {error_detail}"
     except requests.exceptions.RequestException as e:
         return False, f"Connection error: {str(e)}"
 
@@ -124,7 +143,7 @@ def main():
         st.info("Run the backend with: `cd backend && uvicorn main:app --reload`")
         return
     
-    # If not logged in, show login page
+    # If not logged in, show login/signup page
     if st.session_state.user_id is None:
         st.title("🎯 Welcome to SolveNext")
         st.markdown("### Your AI-Powered LeetCode Practice Companion")
@@ -133,19 +152,42 @@ def main():
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.subheader("Login")
+            # Toggle between Login and Sign Up
+            auth_mode = st.radio(
+                "Choose an option:",
+                ["Login", "Sign Up"],
+                horizontal=True
+            )
+            
             username = st.text_input("Username", placeholder="Enter your username")
             
-            if st.button("Login", type="primary", use_container_width=True):
-                if username.strip():
-                    success, message = login(username.strip())
-                    if success:
-                        st.success(message)
-                        st.rerun()
+            if auth_mode == "Login":
+                if st.button("Login", type="primary", use_container_width=True):
+                    if username.strip():
+                        success, message = login(username.strip())
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
                     else:
-                        st.error(message)
-                else:
-                    st.warning("Please enter a username")
+                        st.warning("Please enter a username")
+            
+            else:  # Sign Up
+                if st.button("Create Account", type="primary", use_container_width=True):
+                    if username.strip():
+                        success, user_data, message = signup(username.strip())
+                        if success:
+                            st.success(message)
+                            # Auto-login after successful signup
+                            st.session_state.user_id = user_data["user_id"]
+                            st.session_state.username = user_data["username"]
+                            st.success("You are now logged in!")
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    else:
+                        st.warning("Please enter a username")
         
         return
     
