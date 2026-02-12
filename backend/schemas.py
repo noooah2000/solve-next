@@ -79,12 +79,13 @@ class LogResponse(BaseModel):
 
 
 class RecommendedProblem(BaseModel):
-    problem_title: str
+    problem_id: int
+    title: str
     difficulty: str
     reason: str
-    leetcode_url: str
+    link: str
 
 
 class RecommendationResponse(BaseModel):
-    advice: str
-    problems: List[RecommendedProblem]
+    advice: Optional[str] = None
+    recommendations: List[RecommendedProblem]

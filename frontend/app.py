@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 from datetime import datetime
 from api_client import (
@@ -499,44 +500,18 @@ def show_ai_coach():
     if "recommendations" not in st.session_state:
         st.session_state.recommendations = None
 
-    # Initialize tag selection state
-    if "tags_widget" not in st.session_state:
-        st.session_state.tags_widget = ["All Tags"]
-    if "last_selected_tags" not in st.session_state:
-        st.session_state.last_selected_tags = ["All Tags"]
-
-    def update_tag_selection():
-        new_selection = st.session_state.tags_widget
-        old_selection = st.session_state.last_selected_tags
-
-        # User just clicked "All Tags"
-        if "All Tags" in new_selection and "All Tags" not in old_selection:
-            new_selection = ["All Tags"]
-
-        # User added other tags while "All Tags" was selected
-        if "All Tags" in old_selection and len(new_selection) > 1:
-            new_selection = [tag for tag in new_selection if tag != "All Tags"]
-
-        # If empty, revert to default
-        if not new_selection:
-            new_selection = ["All Tags"]
-
-        st.session_state.tags_widget = new_selection
-        st.session_state.last_selected_tags = new_selection
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        multiselect_options = ["All Tags"] + available_tags
         selected_options = st.multiselect(
             "Topic Tags",
-            multiselect_options,
-            help="Select topics you want to practice",
-            key="tags_widget",
-            on_change=update_tag_selection
+            available_tags,
+            default=[],
+            placeholder="Select topics (Leave empty for all)",
+            help="Select topics you want to practice"
         )
 
-        if not selected_options or "All Tags" in selected_options:
+        if not selected_options:
             final_tags = available_tags
         else:
             final_tags = selected_options
@@ -556,7 +531,8 @@ def show_ai_coach():
             "🏢 Target Company",
             TARGET_COMPANIES,
             default=[],
-            help="Choose one or more companies (optional)"
+            placeholder="Choose companies (Leave empty for any)",
+            help="Select specific ones to narrow down your practice."
         )
 
     with curriculum_col:
@@ -608,24 +584,28 @@ def show_ai_coach():
         # Display recommended problems
         st.markdown("### 📚 Recommended Problems")
         
-        if result["problems"]:
-            for idx, problem in enumerate(result["problems"], 1):
+        recommendations = result.get("recommendations", [])
+        if recommendations:
+            for idx, problem in enumerate(recommendations, 1):
                 with st.container():
-                    st.markdown(f"#### {idx}. {problem['problem_title']}")
+                    problem_id = problem.get("problem_id")
+                    title = problem.get("title", "Untitled")
+                    display_prefix = f"{problem_id}." if problem_id else f"{idx}."
+                    st.markdown(f"#### {display_prefix} {title}")
                     
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.write(f"**Reason:** {problem['reason']}")
-                        st.write(f"**Difficulty:** {problem['difficulty']}")
+                        st.write(f"**Reason:** {problem.get('reason', '')}")
+                        st.write(f"**Difficulty:** {problem.get('difficulty', '')}")
                     with col2:
                         st.link_button(
                             "Solve on LeetCode →",
-                            problem['leetcode_url'],
+                            problem.get('link', ""),
                             use_container_width=True
                         )
                     
                     # Hints feature with session state
-                    problem_title = problem['problem_title']
+                    problem_title = title
                     hints_key = f"hints_{problem_title.replace(' ', '_')}"
                     
                     # Check if hints already exist
@@ -661,7 +641,13 @@ def show_ai_coach():
                         for hint_idx, (label, description) in enumerate(hint_labels):
                             if hint_idx < len(hints):
                                 with st.expander(label, expanded=False):
-                                    st.write(hints[hint_idx])
+                                    hint_content = hints[hint_idx]
+                                    clean_hint = re.sub(
+                                        r"^(?:\*\*|)?Hint \d+[:.]\s*(?:\*\*|)?",
+                                        "",
+                                        hint_content
+                                    ).strip()
+                                    st.write(clean_hint)
                                     st.caption(description)
                         
                         # Add disclaimer about AI-generated content

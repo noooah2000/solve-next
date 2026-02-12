@@ -136,15 +136,18 @@ Please provide:
 Return your response in PURE JSON format (no markdown, no code blocks) with this exact structure:
 {{
     "advice": "Your personalized advice here",
-    "problems": [
+    "recommendations": [
         {{
-            "problem_title": "Problem name",
+            "problem_id": 54,
+            "title": "Spiral Matrix",
             "difficulty": "Easy/Medium/Hard",
             "reason": "Why this problem helps (1 sentence)",
-            "leetcode_url": "https://leetcode.com/problems/problem-slug/"
+            "link": "https://leetcode.com/problems/problem-slug/"
         }}
     ]
 }}
+
+IMPORTANT: Provide the accurate LeetCode problem number for each recommendation.
 
 IMPORTANT: Return ONLY the JSON object, nothing else."""
 
@@ -163,14 +166,14 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         data = json.loads(response_text)
         
         # Convert to Pydantic models
-        problems = [
+        recommendations = [
             RecommendedProblem(**problem) 
-            for problem in data.get("problems", [])
+            for problem in data.get("recommendations", [])
         ]
         
         return RecommendationResponse(
             advice=data.get("advice", "Keep practicing consistently!"),
-            problems=problems
+            recommendations=recommendations
         )
     
     except json.JSONDecodeError as e:
@@ -179,14 +182,14 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         # Return fallback response
         return RecommendationResponse(
             advice="Unable to generate personalized recommendations. Please try again.",
-            problems=[]
+            recommendations=[]
         )
     except Exception as e:
         print(f"Error generating recommendations: {e}")
         # Return fallback response
         return RecommendationResponse(
             advice="An error occurred while generating recommendations. Please try again later.",
-            problems=[]
+            recommendations=[]
         )
 
 def get_problem_hints(problem_title: str) -> dict:
@@ -215,7 +218,8 @@ Return your response in PURE JSON format (no markdown, no code blocks) with this
     ]
 }}
 
-IMPORTANT: Return ONLY the JSON object, nothing else."""
+IMPORTANT: Return ONLY the JSON object, nothing else.
+The output strings in the JSON array must contain ONLY the hint content. Do NOT include labels like 'Hint 1:' or 'Step 1:' at the beginning of the text."""
 
     try:
         # Generate response from Gemini
