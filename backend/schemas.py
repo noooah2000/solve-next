@@ -56,6 +56,8 @@ class RecommendationRequest(BaseModel):
     tags: List[TopicTag]
     difficulty: Difficulty
     count: int = 5
+    source_list: Optional[str] = None
+    target_companies: Optional[List[str]] = None
 
 
 # Response Models

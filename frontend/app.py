@@ -477,6 +477,15 @@ def show_ai_coach():
     """AI Coach page"""
     st.header("🤖 AI Problem Recommender")
     st.markdown("Get personalized problem recommendations based on your practice history")
+
+    TARGET_COMPANIES = [
+        "Google", "Meta", "Amazon", "Microsoft", "Apple", "Netflix",
+        "Uber", "Bloomberg", "TikTok"
+    ]
+
+    CURRICULUM_OPTIONS = [
+        "All Problems", "Blind 75", "NeetCode 150", "Top 100 Liked", "Top Interview 150"
+    ]
     
     # Topic tags matching backend enum
     available_tags = [
@@ -489,23 +498,48 @@ def show_ai_coach():
     # Initialize recommendations in session state if not present
     if "recommendations" not in st.session_state:
         st.session_state.recommendations = None
-    
-    # "Select All Tags" checkbox
-    use_all_tags = st.checkbox("📌 Select All Tags", value=False, help="Toggle to select all tags or choose specific tags")
+
+    # Initialize tag selection state
+    if "tags_widget" not in st.session_state:
+        st.session_state.tags_widget = ["All Tags"]
+    if "last_selected_tags" not in st.session_state:
+        st.session_state.last_selected_tags = ["All Tags"]
+
+    def update_tag_selection():
+        new_selection = st.session_state.tags_widget
+        old_selection = st.session_state.last_selected_tags
+
+        # User just clicked "All Tags"
+        if "All Tags" in new_selection and "All Tags" not in old_selection:
+            new_selection = ["All Tags"]
+
+        # User added other tags while "All Tags" was selected
+        if "All Tags" in old_selection and len(new_selection) > 1:
+            new_selection = [tag for tag in new_selection if tag != "All Tags"]
+
+        # If empty, revert to default
+        if not new_selection:
+            new_selection = ["All Tags"]
+
+        st.session_state.tags_widget = new_selection
+        st.session_state.last_selected_tags = new_selection
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if use_all_tags:
-            selected_tags = available_tags
-            st.info(f"Using all {len(available_tags)} tags")
+        multiselect_options = ["All Tags"] + available_tags
+        selected_options = st.multiselect(
+            "Topic Tags",
+            multiselect_options,
+            help="Select topics you want to practice",
+            key="tags_widget",
+            on_change=update_tag_selection
+        )
+
+        if not selected_options or "All Tags" in selected_options:
+            final_tags = available_tags
         else:
-            selected_tags = st.multiselect(
-                "Topic Tags",
-                available_tags,
-                default=["Array"],
-                help="Select topics you want to practice"
-            )
+            final_tags = selected_options
     
     with col2:
         difficulty = st.selectbox(
@@ -513,6 +547,24 @@ def show_ai_coach():
             ["Easy", "Medium", "Hard"],
             index=1,
             help="Select problem difficulty"
+        )
+
+    company_col, curriculum_col = st.columns(2)
+
+    with company_col:
+        target_companies = st.multiselect(
+            "🏢 Target Company",
+            TARGET_COMPANIES,
+            default=[],
+            help="Choose one or more companies (optional)"
+        )
+
+    with curriculum_col:
+        source_list = st.selectbox(
+            "🎯 Target Curriculum",
+            CURRICULUM_OPTIONS,
+            index=0,
+            help="Limit recommendations to a curated list"
         )
     
     count = st.number_input(
@@ -524,16 +576,18 @@ def show_ai_coach():
     )
     
     if st.button("Get Advice", type="primary", use_container_width=True):
-        if not selected_tags:
+        if not final_tags:
             st.warning("Please select at least one topic tag")
             return
         
         with st.spinner("AI is analyzing your practice history and generating recommendations..."):
             success, result = get_recommendations(
                 st.session_state.username,
-                selected_tags,
+                final_tags,
                 difficulty,
-                count
+                count,
+                source_list,
+                target_companies
             )
         
         if success:
