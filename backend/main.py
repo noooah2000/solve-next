@@ -17,6 +17,7 @@ from .schemas import (
     RecommendationResponse
 )
 from . import scraper, ai_service
+from pydantic import BaseModel
 
 
 @asynccontextmanager
@@ -33,6 +34,10 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(title="SolveNext API", lifespan=lifespan)
+
+
+class ProblemPreviewRequest(BaseModel):
+    problem_input: str
 
 
 @app.get("/")
@@ -150,12 +155,22 @@ def create_log(
         )
     
     # Get problem info from LeetCode
-    problem_info = scraper.get_problem_info(request.problem_slug)
+    problem_slug = request.problem_slug
+    if problem_slug.isdigit():
+        slug_from_id = scraper.get_slug_from_id(problem_slug)
+        if not slug_from_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Problem ID '{problem_slug}' not found on LeetCode"
+            )
+        problem_slug = slug_from_id
+
+    problem_info = scraper.get_problem_info(problem_slug)
     
     if not problem_info:
         raise HTTPException(
             status_code=404,
-            detail=f"Problem '{request.problem_slug}' not found on LeetCode"
+            detail=f"Problem '{problem_slug}' not found on LeetCode"
         )
     
     # Calculate attempt_count: count existing logs for this user and problem
@@ -184,6 +199,34 @@ def create_log(
     session.refresh(new_log)
     
     return new_log
+
+
+@app.post("/problems/preview")
+def preview_problem(request: ProblemPreviewRequest):
+    """
+    Preview problem details (title, difficulty) for a slug or ID.
+    """
+    problem_input = request.problem_input.strip()
+    if not problem_input:
+        raise HTTPException(status_code=400, detail="problem_input is required")
+
+    if problem_input.isdigit():
+        slug = scraper.get_slug_from_id(problem_input)
+        if not slug:
+            raise HTTPException(status_code=404, detail=f"Problem ID '{problem_input}' not found on LeetCode")
+    else:
+        slug = problem_input
+
+    problem_info = scraper.get_problem_info(slug)
+    if not problem_info:
+        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found on LeetCode")
+
+    return {
+        "slug": slug,
+        "title": problem_info.get("title", ""),
+        "difficulty": problem_info.get("difficulty", ""),
+        "problem_id": problem_info.get("problem_id", "")
+    }
 
 
 @app.get("/users/{user_id}/logs", response_model=List[LogResponse])
