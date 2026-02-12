@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 from datetime import datetime
 from api_client import (
@@ -477,6 +478,15 @@ def show_ai_coach():
     """AI Coach page"""
     st.header("🤖 AI Problem Recommender")
     st.markdown("Get personalized problem recommendations based on your practice history")
+
+    TARGET_COMPANIES = [
+        "Google", "Meta", "Amazon", "Microsoft", "Apple", "Netflix",
+        "Uber", "Bloomberg", "TikTok"
+    ]
+
+    CURRICULUM_OPTIONS = [
+        "All Problems", "Blind 75", "NeetCode 150", "Top 100 Liked", "Top Interview 150"
+    ]
     
     # Topic tags matching backend enum
     available_tags = [
@@ -489,23 +499,22 @@ def show_ai_coach():
     # Initialize recommendations in session state if not present
     if "recommendations" not in st.session_state:
         st.session_state.recommendations = None
-    
-    # "Select All Tags" checkbox
-    use_all_tags = st.checkbox("📌 Select All Tags", value=False, help="Toggle to select all tags or choose specific tags")
-    
+
     col1, col2 = st.columns(2)
     
     with col1:
-        if use_all_tags:
-            selected_tags = available_tags
-            st.info(f"Using all {len(available_tags)} tags")
+        selected_options = st.multiselect(
+            "Topic Tags",
+            available_tags,
+            default=[],
+            placeholder="Select topics (Leave empty for all)",
+            help="Select topics you want to practice"
+        )
+
+        if not selected_options:
+            final_tags = available_tags
         else:
-            selected_tags = st.multiselect(
-                "Topic Tags",
-                available_tags,
-                default=["Array"],
-                help="Select topics you want to practice"
-            )
+            final_tags = selected_options
     
     with col2:
         difficulty = st.selectbox(
@@ -513,6 +522,25 @@ def show_ai_coach():
             ["Easy", "Medium", "Hard"],
             index=1,
             help="Select problem difficulty"
+        )
+
+    company_col, curriculum_col = st.columns(2)
+
+    with company_col:
+        target_companies = st.multiselect(
+            "🏢 Target Company",
+            TARGET_COMPANIES,
+            default=[],
+            placeholder="Choose companies (Leave empty for any)",
+            help="Select specific ones to narrow down your practice."
+        )
+
+    with curriculum_col:
+        source_list = st.selectbox(
+            "🎯 Target Curriculum",
+            CURRICULUM_OPTIONS,
+            index=0,
+            help="Limit recommendations to a curated list"
         )
     
     count = st.number_input(
@@ -524,16 +552,18 @@ def show_ai_coach():
     )
     
     if st.button("Get Advice", type="primary", use_container_width=True):
-        if not selected_tags:
+        if not final_tags:
             st.warning("Please select at least one topic tag")
             return
         
         with st.spinner("AI is analyzing your practice history and generating recommendations..."):
             success, result = get_recommendations(
                 st.session_state.username,
-                selected_tags,
+                final_tags,
                 difficulty,
-                count
+                count,
+                source_list,
+                target_companies
             )
         
         if success:
@@ -554,24 +584,28 @@ def show_ai_coach():
         # Display recommended problems
         st.markdown("### 📚 Recommended Problems")
         
-        if result["problems"]:
-            for idx, problem in enumerate(result["problems"], 1):
+        recommendations = result.get("recommendations", [])
+        if recommendations:
+            for idx, problem in enumerate(recommendations, 1):
                 with st.container():
-                    st.markdown(f"#### {idx}. {problem['problem_title']}")
+                    problem_id = problem.get("problem_id")
+                    title = problem.get("title", "Untitled")
+                    display_prefix = f"{problem_id}." if problem_id else f"{idx}."
+                    st.markdown(f"#### {display_prefix} {title}")
                     
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.write(f"**Reason:** {problem['reason']}")
-                        st.write(f"**Difficulty:** {problem['difficulty']}")
+                        st.write(f"**Reason:** {problem.get('reason', '')}")
+                        st.write(f"**Difficulty:** {problem.get('difficulty', '')}")
                     with col2:
                         st.link_button(
                             "Solve on LeetCode →",
-                            problem['leetcode_url'],
+                            problem.get('link', ""),
                             use_container_width=True
                         )
                     
                     # Hints feature with session state
-                    problem_title = problem['problem_title']
+                    problem_title = title
                     hints_key = f"hints_{problem_title.replace(' ', '_')}"
                     
                     # Check if hints already exist
@@ -607,7 +641,13 @@ def show_ai_coach():
                         for hint_idx, (label, description) in enumerate(hint_labels):
                             if hint_idx < len(hints):
                                 with st.expander(label, expanded=False):
-                                    st.write(hints[hint_idx])
+                                    hint_content = hints[hint_idx]
+                                    clean_hint = re.sub(
+                                        r"^(?:\*\*|)?Hint \d+[:.]\s*(?:\*\*|)?",
+                                        "",
+                                        hint_content
+                                    ).strip()
+                                    st.write(clean_hint)
                                     st.caption(description)
                         
                         # Add disclaimer about AI-generated content

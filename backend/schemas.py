@@ -56,6 +56,8 @@ class RecommendationRequest(BaseModel):
     tags: List[TopicTag]
     difficulty: Difficulty
     count: int = 5
+    source_list: Optional[str] = None
+    target_companies: Optional[List[str]] = None
 
 
 # Response Models
@@ -77,12 +79,13 @@ class LogResponse(BaseModel):
 
 
 class RecommendedProblem(BaseModel):
-    problem_title: str
+    problem_id: int
+    title: str
     difficulty: str
     reason: str
-    leetcode_url: str
+    link: str
 
 
 class RecommendationResponse(BaseModel):
-    advice: str
-    problems: List[RecommendedProblem]
+    advice: Optional[str] = None
+    recommendations: List[RecommendedProblem]

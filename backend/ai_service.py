@@ -101,13 +101,30 @@ def generate_recommendations(
     tags_str = ", ".join([tag.value for tag in request.tags])
     
     # Construct the AI prompt
+    curriculum_instruction = ""
+    if request.source_list == "Blind 75":
+        curriculum_instruction = "\nStrictly recommend problems ONLY from the famous 'Blind 75' list."
+    elif request.source_list == "NeetCode 150":
+        curriculum_instruction = "\nStrictly recommend problems ONLY from the 'NeetCode 150' list."
+
+    company_instruction = ""
+    if request.target_companies:
+        companies_str = ", ".join(request.target_companies)
+        company_instruction = (
+            f"\nPrioritize problems that are frequently asked in interviews at the following companies: {companies_str}. "
+            "Use your internal knowledge of company question banks."
+        )
+
     prompt = f"""You are an expert LeetCode coach. Based on the user's practice history, recommend {request.count} LeetCode problems.
+{f"You are a specialized coach helping the user complete the {request.source_list} challenge." if request.source_list and request.source_list != "All Problems" else ""}
 
 User Practice History:
 {history_summary}
 
 Requested Topics: {tags_str}
 Requested Difficulty: {request.difficulty.value}
+{curriculum_instruction}
+{company_instruction}
 
 Please provide:
 1. Personalized advice (2-3 sentences) based on their struggle patterns
@@ -119,15 +136,18 @@ Please provide:
 Return your response in PURE JSON format (no markdown, no code blocks) with this exact structure:
 {{
     "advice": "Your personalized advice here",
-    "problems": [
+    "recommendations": [
         {{
-            "problem_title": "Problem name",
+            "problem_id": 54,
+            "title": "Spiral Matrix",
             "difficulty": "Easy/Medium/Hard",
             "reason": "Why this problem helps (1 sentence)",
-            "leetcode_url": "https://leetcode.com/problems/problem-slug/"
+            "link": "https://leetcode.com/problems/problem-slug/"
         }}
     ]
 }}
+
+IMPORTANT: Provide the accurate LeetCode problem number for each recommendation.
 
 IMPORTANT: Return ONLY the JSON object, nothing else."""
 
@@ -146,14 +166,14 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         data = json.loads(response_text)
         
         # Convert to Pydantic models
-        problems = [
+        recommendations = [
             RecommendedProblem(**problem) 
-            for problem in data.get("problems", [])
+            for problem in data.get("recommendations", [])
         ]
         
         return RecommendationResponse(
             advice=data.get("advice", "Keep practicing consistently!"),
-            problems=problems
+            recommendations=recommendations
         )
     
     except json.JSONDecodeError as e:
@@ -162,14 +182,14 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         # Return fallback response
         return RecommendationResponse(
             advice="Unable to generate personalized recommendations. Please try again.",
-            problems=[]
+            recommendations=[]
         )
     except Exception as e:
         print(f"Error generating recommendations: {e}")
         # Return fallback response
         return RecommendationResponse(
             advice="An error occurred while generating recommendations. Please try again later.",
-            problems=[]
+            recommendations=[]
         )
 
 def get_problem_hints(problem_title: str) -> dict:
@@ -198,7 +218,8 @@ Return your response in PURE JSON format (no markdown, no code blocks) with this
     ]
 }}
 
-IMPORTANT: Return ONLY the JSON object, nothing else."""
+IMPORTANT: Return ONLY the JSON object, nothing else.
+The output strings in the JSON array must contain ONLY the hint content. Do NOT include labels like 'Hint 1:' or 'Step 1:' at the beginning of the text."""
 
     try:
         # Generate response from Gemini

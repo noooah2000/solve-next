@@ -180,14 +180,23 @@ def update_log(log_id: int, status: str, practice_date: str, note: str):
         return False, f"Connection error: {str(e)}"
 
 
-def get_recommendations(username: str, tags: list, difficulty: str, count: int):
+def get_recommendations(
+    username: str,
+    tags: list,
+    difficulty: str,
+    count: int,
+    source_list: str | None = None,
+    target_companies: list[str] | None = None
+):
     """Get AI-powered recommendations"""
     try:
         payload = {
             "username": username,
             "tags": tags,
             "difficulty": difficulty,
-            "count": count
+            "count": count,
+            "source_list": source_list,
+            "target_companies": target_companies
         }
         response = requests.post(
             f"{API_BASE_URL}/recommendations",
