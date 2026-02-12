@@ -2,7 +2,7 @@ import os
 import json
 from typing import List
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 from sqlmodel import Session, select
 from .database import User, Log, PracticeStatus
 from .schemas import RecommendationRequest, RecommendationResponse, RecommendedProblem
@@ -10,13 +10,12 @@ from .schemas import RecommendationRequest, RecommendationResponse, RecommendedP
 # Load environment variables
 load_dotenv()
 
-# Initialize Gemini AI
+# Initialize Gemini AI Client
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY not found in environment variables")
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-flash-latest')
+client = genai.Client(api_key=api_key)
 
 
 def get_user_history_summary(session: Session, user_id: int) -> str:
@@ -44,7 +43,7 @@ def get_user_history_summary(session: Session, user_id: int) -> str:
     
     # Focus on problematic logs (WITH_HINT or STUCK)
     struggled_logs = [
-        log for log in logs 
+        log for log in logs
         if log.status != PracticeStatus.INDEPENDENT
     ]
     
@@ -74,8 +73,29 @@ def get_user_history_summary(session: Session, user_id: int) -> str:
             summary_parts.append("\nMost challenging topics:")
             for tag, count in tag_counts.most_common(5):
                 summary_parts.append(f"- {tag}: {count} times")
-    
+
     return "\n".join(summary_parts)
+
+
+def get_mastered_problems(session: Session, user_id: int) -> set[str]:
+    """
+    Get a normalized set of problem titles the user has mastered.
+
+    Filters to INDEPENDENT and not deleted.
+    """
+    statement = (
+        select(Log)
+        .where(Log.user_id == user_id)
+        .where(Log.status == PracticeStatus.INDEPENDENT)
+        .where(Log.is_deleted == False)
+    )
+    logs = session.exec(statement).all()
+
+    return {
+        (log.problem_title or "").strip().lower()
+        for log in logs
+        if log.problem_title
+    }
 
 
 def generate_recommendations(
@@ -101,37 +121,38 @@ def generate_recommendations(
     tags_str = ", ".join([tag.value for tag in request.tags])
     
     # Construct the AI prompt
-    curriculum_instruction = ""
-    if request.source_list == "Blind 75":
-        curriculum_instruction = "\nStrictly recommend problems ONLY from the famous 'Blind 75' list."
-    elif request.source_list == "NeetCode 150":
-        curriculum_instruction = "\nStrictly recommend problems ONLY from the 'NeetCode 150' list."
-
-    company_instruction = ""
+    company_context = ""
     if request.target_companies:
         companies_str = ", ".join(request.target_companies)
-        company_instruction = (
-            f"\nPrioritize problems that are frequently asked in interviews at the following companies: {companies_str}. "
-            "Use your internal knowledge of company question banks."
+        company_context = (
+            f"Target Companies: {companies_str}.\n"
+            "Select problems that fit the interview style of these companies "
+            "(e.g., relevant algorithms, difficulty patterns, or historically popular questions). "
+            "If exact matches are limited, choose problems that are highly representative of what these companies typically ask."
         )
+    else:
+        company_context = "Focus on high-value problems for general top-tier tech interviews."
 
-    prompt = f"""You are an expert LeetCode coach. Based on the user's practice history, recommend {request.count} LeetCode problems.
-{f"You are a specialized coach helping the user complete the {request.source_list} challenge." if request.source_list and request.source_list != "All Problems" else ""}
+    fetch_count = 2 *request.count + 10
 
-User Practice History:
-{history_summary}
+    prompt = f"""
+ROLE: You are an expert coding interview coach.
+CONTEXT:
+User's Skill Level: {history_summary}
+{company_context}
+Tags: {tags_str if tags_str else 'General'}
+Difficulty: {request.difficulty.value if request.difficulty else 'Adaptive'}
 
-Requested Topics: {tags_str}
-Requested Difficulty: {request.difficulty.value}
-{curriculum_instruction}
-{company_instruction}
+TASK:
+Generate a list of EXACTLY {fetch_count} distinct LeetCode problems.
 
-Please provide:
-1. Personalized advice (2-3 sentences) based on their struggle patterns
-2. {request.count} recommended LeetCode problems that:
-   - Match the requested difficulty and topics
-   - Help strengthen their weak areas
-   - Are varied and build upon each other
+⚠️ IMPORTANT QUANTITY INSTRUCTION:
+The user ultimately wants to see {request.count} problems, but you MUST generate {fetch_count} candidates internally.
+This is to ensure we have enough options after filtering out problems the user has already solved.
+DO NOT return fewer than {fetch_count} problems. If you run out of perfect matches, fill the remaining slots with relevant practice problems.
+
+OUTPUT FORMAT:
+JSON format with a list of 'recommendations'.
 
 Return your response in PURE JSON format (no markdown, no code blocks) with this exact structure:
 {{
@@ -148,12 +169,17 @@ Return your response in PURE JSON format (no markdown, no code blocks) with this
 }}
 
 IMPORTANT: Provide the accurate LeetCode problem number for each recommendation.
+IMPORTANT: The Topic must ALWAYS match the requested topics. Do not recommend outside the selected topics.
 
 IMPORTANT: Return ONLY the JSON object, nothing else."""
 
     try:
         # Generate response from Gemini
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=prompt
+        )
+        
         response_text = response.text.strip()
         
         # Remove markdown code blocks if present
@@ -167,13 +193,48 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         
         # Convert to Pydantic models
         recommendations = [
-            RecommendedProblem(**problem) 
+            RecommendedProblem(**problem)
             for problem in data.get("recommendations", [])
         ]
+
+        mastered_titles = get_mastered_problems(session, user_id)
+        exclude_titles = {
+            (title or "").strip().lower()
+            for title in (request.exclude_problems or [])
+            if title
+        }
+        blocked_titles = mastered_titles | exclude_titles
+        print(f"\n🔍 --- DEBUG START: User {user_id} ---")
+        print(f"🎯 Goal: {request.count} | Buffer: {fetch_count}")
+        print(f"🚫 Blacklist Size: {len(mastered_titles) + len(exclude_titles)}")
+        print(f"🧠 Mastered: {len(mastered_titles)} | Seen in Session: {len(exclude_titles)}")
+        print(f"🤖 AI returned {len(recommendations)} candidates.")
+
+        valid_recommendations: List[RecommendedProblem] = []
+        for problem in recommendations:
+            ai_title_norm = (problem.title or "").strip().lower()
+
+            if ai_title_norm in mastered_titles:
+                print(f"   ❌ SKIP: '{problem.title}' (Already Mastered)")
+                continue
+
+            if ai_title_norm in exclude_titles:
+                print(f"   ❌ SKIP: '{problem.title}' (Seen in Session)")
+                continue
+
+            print(f"   ✅ KEEP: '{problem.title}'")
+            valid_recommendations.append(problem)
+
+            if len(valid_recommendations) >= request.count:
+                print("   🛑 Limit reached, stopping.")
+                break
+
+        print(f"📊 Final Count: {len(valid_recommendations)}/{request.count}")
+        print("----------------------------------\n")
         
         return RecommendationResponse(
             advice=data.get("advice", "Keep practicing consistently!"),
-            recommendations=recommendations
+            recommendations=valid_recommendations
         )
     
     except json.JSONDecodeError as e:
@@ -223,7 +284,10 @@ The output strings in the JSON array must contain ONLY the hint content. Do NOT 
 
     try:
         # Generate response from Gemini
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=prompt
+        )
         response_text = response.text.strip()
         
         # Remove markdown code blocks if present

@@ -203,8 +203,8 @@ def get_recommendations(
     tags: list,
     difficulty: str,
     count: int,
-    source_list: str | None = None,
-    target_companies: list[str] | None = None
+    target_companies: list[str] | None = None,
+    exclude_problems: list[str] | None = None
 ):
     """Get AI-powered recommendations"""
     try:
@@ -213,8 +213,8 @@ def get_recommendations(
             "tags": tags,
             "difficulty": difficulty,
             "count": count,
-            "source_list": source_list,
-            "target_companies": target_companies
+            "target_companies": target_companies,
+            "exclude_problems": exclude_problems or []
         }
         response = requests.post(
             f"{API_BASE_URL}/recommendations",
