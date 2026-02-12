@@ -6,6 +6,7 @@ from api_client import (
     signup,
     login,
     create_log,
+    get_problem_preview,
     get_user_logs,
     delete_log,
     get_trash_logs,
@@ -78,6 +79,30 @@ def extract_slug_from_input(user_input: str) -> str:
     return user_input
 
 
+def extract_slug_from_url(url: str) -> str:
+    """
+    Extract problem slug from a LeetCode URL.
+
+    Args:
+        url: Full LeetCode problem URL
+
+    Returns:
+        Extracted slug or empty string if not found
+    """
+    url = url.strip()
+    if "leetcode.com/problems/" not in url.lower():
+        return ""
+    try:
+        start_idx = url.lower().index("leetcode.com/problems/") + len("leetcode.com/problems/")
+        remaining = url[start_idx:]
+        end_idx = remaining.find("/")
+        if end_idx != -1:
+            return remaining[:end_idx].strip()
+        return remaining.strip()
+    except (ValueError, IndexError):
+        return ""
+
+
 # Dialog for editing logs
 @st.dialog("✏️ Edit Log")
 def edit_log_dialog(log: dict):
@@ -135,6 +160,16 @@ def edit_log_dialog(log: dict):
                 st.rerun()
             else:
                 st.error(message)
+
+
+def reset_diary_form():
+    """Reset the New Practice Log form state."""
+    st.session_state.problem_input = ""
+    st.session_state.notes_input = ""
+    st.session_state.status_input = "INDEPENDENT"
+    st.session_state.current_preview = None
+    st.session_state.save_error = ""
+    st.session_state.check_problem_requested = False
 
 
 # Main App Logic
@@ -207,6 +242,13 @@ def main():
             ["📝 Write Diary", "📊 History", "🗑️ Trash Bin", "🤖 AI Coach"],
             label_visibility="collapsed"
         )
+
+        if "last_visited_page" not in st.session_state:
+            st.session_state.last_visited_page = page
+        elif st.session_state.last_visited_page != page:
+            st.session_state.last_visited_page = page
+            if page == "📝 Write Diary":
+                reset_diary_form()
         
         st.markdown("---")
         st.write(f"**User:** {st.session_state.username}")
@@ -230,49 +272,147 @@ def show_write_diary():
     """Write Diary page"""
     st.header("📝 New Practice Log")
     st.markdown("Record your LeetCode practice session")
+
+    if "current_preview" not in st.session_state:
+        st.session_state.current_preview = None
+    if "problem_input" not in st.session_state:
+        st.session_state.problem_input = ""
+    if "check_problem_requested" not in st.session_state:
+        st.session_state.check_problem_requested = False
+    if "notes_input" not in st.session_state:
+        st.session_state.notes_input = ""
+    if "save_error" not in st.session_state:
+        st.session_state.save_error = ""
+
+    def request_check():
+        st.session_state.check_problem_requested = True
+
+    def save_log_callback():
+        st.session_state.save_error = ""
+        input_val = st.session_state.problem_input.strip()
+        if not input_val:
+            st.session_state.save_error = "⚠️ Invalid format! Please enter a numeric ID (e.g., 1) or a full LeetCode URL."
+            return
+
+        needs_check = (
+            not st.session_state.current_preview or
+            st.session_state.current_preview.get("input") != input_val
+        )
+
+        if needs_check:
+            if input_val.isdigit():
+                preview_input = input_val
+            elif "leetcode.com/problems/" in input_val.lower():
+                preview_input = extract_slug_from_url(input_val)
+                if not preview_input:
+                    st.session_state.save_error = "⚠️ Invalid format! Please enter a numeric ID (e.g., 1) or a full LeetCode URL."
+                    return
+            else:
+                st.session_state.save_error = "⚠️ Invalid format! Please enter a numeric ID (e.g., 1) or a full LeetCode URL."
+                return
+
+            ok, data, message = get_problem_preview(preview_input)
+            if ok:
+                st.session_state.current_preview = {
+                    "slug": data.get("slug", preview_input),
+                    "title": data.get("title", ""),
+                    "difficulty": data.get("difficulty", ""),
+                    "input": input_val
+                }
+            else:
+                st.session_state.save_error = message
+                return
+
+        preview = st.session_state.current_preview
+        success, message = create_log(
+            st.session_state.username,
+            preview["slug"],
+            st.session_state.status_input,
+            st.session_state.notes_input.strip()
+        )
+        if success:
+            st.toast("✅ Log saved successfully!")
+            st.session_state.problem_input = ""
+            st.session_state.notes_input = ""
+            st.session_state.current_preview = None
+        else:
+            st.session_state.save_error = message
     
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
     
     with col1:
         problem_input = st.text_input(
-            "Problem Link",
-            placeholder="e.g., https://leetcode.com/problems/two-sum/",
-            help="Paste the full URL of the LeetCode problem"
+            "Problem ID or Link",
+            placeholder="e.g., 1 or https://leetcode.com/problems/two-sum/",
+            help="Enter the numeric Problem ID or the full URL. Raw slugs (e.g., 'two-sum') are no longer supported.",
+            key="problem_input",
+            on_change=request_check
         )
     
     with col2:
-        status = st.selectbox(
-            "Status",
-            ["INDEPENDENT", "WITH_HINT", "STUCK"],
-            help="How did you solve this problem?"
-        )
-    
+        if st.button("🔍 Check Problem", type="secondary", use_container_width=True):
+            st.session_state.check_problem_requested = True
+
+    preview_container = st.container()
+
+    if st.session_state.check_problem_requested:
+        st.session_state.check_problem_requested = False
+        input_val = problem_input.strip()
+        if not input_val:
+            preview_container.warning("Please enter a problem ID or link")
+        else:
+            if input_val.isdigit():
+                preview_input = input_val
+            elif "leetcode.com/problems/" in input_val.lower():
+                preview_input = extract_slug_from_url(input_val)
+                if not preview_input:
+                    preview_container.error("⚠️ Invalid format! Please enter a numeric ID (e.g., 1) or a full LeetCode URL.")
+                    preview_input = None
+            else:
+                preview_container.error("⚠️ Invalid format! Please enter a numeric ID (e.g., 1) or a full LeetCode URL.")
+                preview_input = None
+
+            if preview_input:
+                with st.spinner("Checking problem..."):
+                    ok, data, message = get_problem_preview(preview_input)
+                    if ok:
+                        st.session_state.current_preview = {
+                            "slug": data.get("slug", preview_input),
+                            "title": data.get("title", ""),
+                            "difficulty": data.get("difficulty", ""),
+                            "input": input_val
+                        }
+                    else:
+                        st.session_state.current_preview = None
+                        preview_container.error(message)
+
+    if st.session_state.current_preview:
+        preview = st.session_state.current_preview
+        difficulty = preview.get("difficulty", "")
+        diff_color = "green" if difficulty == "Easy" else "orange" if difficulty == "Medium" else "red"
+        with preview_container.container(border=True):
+            st.markdown(f"**Problem:** {preview.get('title', '')}")
+            st.markdown(f"**Difficulty:** :{diff_color}[{difficulty}]")
+
+    status = st.selectbox(
+        "Status",
+        ["INDEPENDENT", "WITH_HINT", "STUCK"],
+        help="How did you solve this problem?",
+        key="status_input"
+    )
+
     note = st.text_area(
         "Notes (Optional)",
         placeholder="Add any notes about your practice session, challenges faced, or insights gained...",
-        height=150
+        height=150,
+        key="notes_input"
     )
-    
-    if st.button("Save Log", type="primary", use_container_width=True):
-        if problem_input.strip():
-            # Extract slug from input
-            slug = extract_slug_from_input(problem_input)
-            st.caption(f"🔍 Detected Slug: `{slug}`")
-            
-            with st.spinner("Saving log..."):
-                success, message = create_log(
-                    st.session_state.username,
-                    slug,
-                    status,
-                    note.strip()
-                )
-                if success:
-                    st.success(message)
-                    st.balloons()
-                else:
-                    st.error(message)
-        else:
-            st.warning("Please enter a problem link or slug")
+
+    if st.button("Save Log", type="primary", use_container_width=True, on_click=save_log_callback):
+        pass
+
+    if st.session_state.save_error:
+        st.error(st.session_state.save_error)
 
 
 def show_history():

@@ -79,6 +79,24 @@ def create_log(username: str, problem_slug: str, status: str, note: str):
         return False, f"Connection error: {str(e)}"
 
 
+def get_problem_preview(problem_input: str):
+    """Fetch problem preview details (title, difficulty) for a slug or ID."""
+    try:
+        payload = {"problem_input": problem_input}
+        response = requests.post(
+            f"{API_BASE_URL}/problems/preview",
+            json=payload,
+            timeout=10
+        )
+        if response.status_code == 200:
+            return True, response.json(), "Problem found"
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, None, f"Error: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, None, f"Connection error: {str(e)}"
+
+
 def get_user_logs(user_id: int):
     """Get user's practice history"""
     try:
