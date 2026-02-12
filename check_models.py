@@ -1,5 +1,5 @@
 # File: check_models.py
-import google.generativeai as genai
+from google import genai
 import os
 from dotenv import load_dotenv
 
@@ -12,19 +12,18 @@ if not api_key:
 else:
     print(f"API Key loaded: {api_key[:5]}...")
     
-    # 2. Configure API
-    genai.configure(api_key=api_key)
+    # 2. Initialize Client with new SDK
+    client = genai.Client(api_key=api_key)
 
     print("\n🔍 Fetching available models for your API Key...")
     try:
         found = False
-        for m in genai.list_models():
-            # We only need models that support 'generateContent' (text generation)
-            if 'generateContent' in m.supported_generation_methods:
-                print(f"   - {m.name}")
-                found = True
+        for m in client.models.list():
+            # The new SDK has a different structure - just list all models
+            print(f"   - {m.name}")
+            found = True
         
         if not found:
-            print("Strange, no models supporting text generation were found.")
+            print("Strange, no models were found.")
     except Exception as e:
         print(f"Query failed: {e}")
