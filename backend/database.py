@@ -6,7 +6,7 @@ from sqlmodel import Field, SQLModel, create_engine, Session, Relationship
 
 class PracticeStatus(str, Enum):
     INDEPENDENT = "INDEPENDENT"
-    WITH_HINT = "WITH_HINT"
+    WITH_HINT = "WITH HINT"
     STUCK = "STUCK"
 
 

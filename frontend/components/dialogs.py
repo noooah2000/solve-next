@@ -29,8 +29,8 @@ def edit_log_dialog(log: dict):
         current_status = log.get("status", "INDEPENDENT")
         status = st.selectbox(
             "Status",
-            ["INDEPENDENT", "WITH_HINT", "STUCK"],
-            index=["INDEPENDENT", "WITH_HINT", "STUCK"].index(current_status),
+            ["INDEPENDENT", "WITH HINT", "STUCK"],
+            index=["INDEPENDENT", "WITH HINT", "STUCK"].index(current_status),
             help="How did you solve this problem?"
         )
 

@@ -163,7 +163,7 @@ def show_write_diary() -> None:
 
     st.selectbox(
         "Status",
-        ["INDEPENDENT", "WITH_HINT", "STUCK"],
+        ["INDEPENDENT", "WITH HINT", "STUCK"],
         help="How did you solve this problem?",
         key="status_input"
     )

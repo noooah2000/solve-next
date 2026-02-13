@@ -23,7 +23,7 @@ def _sorted_attempts(problem_logs: list[dict]) -> list[dict]:
 def _render_attempt_row(log: dict) -> None:
     status_emoji = {
         "INDEPENDENT": "✅",
-        "WITH_HINT": "💡",
+        "WITH HINT": "💡",
         "STUCK": "❌"
     }.get(log["status"], "📝")
 

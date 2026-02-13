@@ -151,6 +151,11 @@ The user ultimately wants to see {request.count} problems, but you MUST generate
 This is to ensure we have enough options after filtering out problems the user has already solved.
 DO NOT return fewer than {fetch_count} problems. If you run out of perfect matches, fill the remaining slots with relevant practice problems.
 
+DIFFICULTY CONSTRAINT: {request.difficulty.value if request.difficulty else 'Adaptive'}
+CRITICAL: You must ONLY return problems that are strictly classified as '{request.difficulty.value if request.difficulty else 'Adaptive'}'.
+Do NOT recommend problems of other difficulties, even if they are relevant.
+If you cannot find enough '{request.difficulty.value if request.difficulty else 'Adaptive'}' problems for these tags, look for broader tags but KEEP THE DIFFICULTY STRICT.
+
 OUTPUT FORMAT:
 JSON format with a list of 'recommendations'.
 
@@ -213,6 +218,13 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         valid_recommendations: List[RecommendedProblem] = []
         for problem in recommendations:
             ai_title_norm = (problem.title or "").strip().lower()
+
+            req_diff = (request.difficulty.value if request.difficulty else "Adaptive").lower().strip()
+            prob_diff = (problem.difficulty or "").lower().strip()
+            if req_diff not in ["adaptive", "mixed", "any"]:
+                if prob_diff != req_diff:
+                    print(f"   🗑️ DROP: '{problem.title}' (Wrong Difficulty: {problem.difficulty})")
+                    continue
 
             if ai_title_norm in mastered_titles:
                 print(f"   ❌ SKIP: '{problem.title}' (Already Mastered)")

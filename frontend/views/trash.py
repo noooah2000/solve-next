@@ -22,7 +22,7 @@ def _sorted_attempts(problem_logs: list[dict]) -> list[dict]:
 def _render_trash_attempt(log: dict) -> None:
     status_emoji = {
         "INDEPENDENT": "✅",
-        "WITH_HINT": "💡",
+        "WITH HINT": "💡",
         "STUCK": "❌"
     }.get(log["status"], "📝")
 
