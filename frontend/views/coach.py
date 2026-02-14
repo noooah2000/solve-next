@@ -28,14 +28,14 @@ def normalize_title(title: str) -> str:
     return title.strip().lower()
 
 
-def render_ai_hints(problem_title: str) -> None:
-    hints_key = f"hints_{problem_title.replace(' ', '_')}"
+def render_ai_hints(problem_title: str, idx: int) -> None:
+    hints_key = f"hints_{idx}_{problem_title.replace(' ', '_')}"
     has_hints = hints_key in st.session_state and st.session_state[hints_key]
 
     hint_col1, hint_col2 = st.columns([2, 2])
     with hint_col1:
         button_label = "🔄 Ask AI Again" if has_hints else "✨ Ask AI for Hints"
-        if st.button(button_label, key=f"hint_btn_{problem_title.replace(' ', '_')}", use_container_width=True):
+        if st.button(button_label, key=f"hint_btn_{idx}_{problem_title.replace(' ', '_')}", use_container_width=True):
             with st.spinner("Generating AI hints..."):
                 success, hints, message = get_ai_hints(problem_title)
                 if success:
@@ -81,7 +81,7 @@ def render_problem_card(idx: int, problem: dict) -> None:
             use_container_width=True
         )
 
-    render_ai_hints(title)
+    render_ai_hints(title, idx)
     st.markdown("---")
 
 
@@ -154,6 +154,7 @@ def show_ai_coach() -> None:
     if "recommendations" not in st.session_state:
         st.session_state.recommendations = None
     if "seen_problems" not in st.session_state:
+        # Only track problems shown in current session, backend handles mastered filtering
         st.session_state.seen_problems = set()
     final_tags, difficulty, count, target_companies = render_filters_section()
 

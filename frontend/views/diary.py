@@ -1,7 +1,6 @@
 import streamlit as st
 from datetime import datetime
 from api_client import create_log, get_problem_preview
-from utils.helpers import extract_slug_from_url
 
 
 INVALID_INPUT_MESSAGE = "⚠️ Invalid format! Please enter a numeric ID (e.g., 1) or a full LeetCode URL."
@@ -20,28 +19,17 @@ def _init_diary_state() -> None:
         st.session_state.save_error = ""
 
 
-def _get_preview_input(input_val: str) -> tuple[bool, str | None, str | None]:
-    if not input_val:
-        return False, None, "Please enter a problem ID or link"
-    if input_val.isdigit():
-        return True, input_val, None
-    if "leetcode.com/problems/" in input_val.lower():
-        preview_input = extract_slug_from_url(input_val)
-        if preview_input:
-            return True, preview_input, None
-    return False, None, INVALID_INPUT_MESSAGE
-
-
-def _apply_preview(preview_input: str, input_val: str, preview_container) -> None:
+def _apply_preview(input_val: str, preview_container) -> None:
+    """Send raw input to backend for parsing and preview"""
     with st.spinner("Checking problem..."):
-        ok, data, message = get_problem_preview(preview_input)
+        ok, data, message = get_problem_preview(input_val)
         if not ok:
             st.session_state.current_preview = None
             preview_container.error(message)
             return
 
         st.session_state.current_preview = {
-            "slug": data.get("slug", preview_input),
+            "slug": data.get("slug", ""),
             "title": data.get("title", ""),
             "difficulty": data.get("difficulty", ""),
             "input": input_val
@@ -82,12 +70,11 @@ def _maybe_check_problem(problem_input: str, preview_container) -> None:
 
     st.session_state.check_problem_requested = False
     input_val = problem_input.strip()
-    ok, preview_input, error_message = _get_preview_input(input_val)
-    if not ok:
-        preview_container.warning(error_message) if error_message == "Please enter a problem ID or link" else preview_container.error(error_message)
+    if not input_val:
+        preview_container.warning("Please enter a problem ID or link")
         return
 
-    _apply_preview(preview_input, input_val, preview_container)
+    _apply_preview(input_val, preview_container)
 
 
 def reset_diary_form() -> None:
@@ -123,18 +110,13 @@ def show_write_diary() -> None:
         )
 
         if needs_check:
-            ok, preview_input, error_message = _get_preview_input(input_val)
-            if not ok or not preview_input:
-                st.session_state.save_error = error_message or INVALID_INPUT_MESSAGE
-                return
-
-            ok, data, message = get_problem_preview(preview_input)
+            ok, data, message = get_problem_preview(input_val)
             if not ok:
                 st.session_state.save_error = message
                 return
 
             st.session_state.current_preview = {
-                "slug": data.get("slug", preview_input),
+                "slug": data.get("slug", ""),
                 "title": data.get("title", ""),
                 "difficulty": data.get("difficulty", ""),
                 "input": input_val
