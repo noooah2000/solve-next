@@ -40,18 +40,18 @@ def render_ai_hints(problem_title: str, idx: int) -> None:
                 success, hints, message = get_ai_hints(problem_title)
                 if success:
                     st.session_state[hints_key] = hints
-                    has_hints = True
+                    st.rerun()
                 else:
                     st.error(message)
 
     if has_hints:
         hints = st.session_state[hints_key]
-        st.markdown("**🤖 AI-Generated Hints:**")
+        st.markdown("**✨ AI-Generated Hints:**")
 
         hint_labels = [
-            ("🤖 AI Hint 1: High-level Concept", "Conceptual approach and strategy"),
-            ("🤖 AI Hint 2: Strategic Approach", "Data structure or algorithm suggestion"),
-            ("🤖 AI Hint 3: Implementation Detail", "Key logic step or pseudo-code")
+            ("✨ AI Hint 1: High-level Concept", "Conceptual approach and strategy"),
+            ("✨ AI Hint 2: Strategic Approach", "Data structure or algorithm suggestion"),
+            ("✨ AI Hint 3: Implementation Detail", "Key logic step or pseudo-code")
         ]
 
         for hint_idx, (label, description) in enumerate(hint_labels):
@@ -148,7 +148,7 @@ def render_recommendations_section(result: dict) -> None:
 
 def show_ai_coach() -> None:
     """AI Coach page"""
-    st.header("🎯 Interview Simulator")
+    st.header("🎯 Personal AI Coach")
     st.markdown("Get personalized problem recommendations based on your practice history")
 
     if "recommendations" not in st.session_state:

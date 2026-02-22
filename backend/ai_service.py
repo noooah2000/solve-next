@@ -213,7 +213,7 @@ IMPORTANT: Return ONLY the JSON object, nothing else."""
         print(f"🎯 Goal: {request.count} | Buffer: {fetch_count}")
         print(f"🚫 Blacklist Size: {len(mastered_titles) + len(exclude_titles)}")
         print(f"🧠 Mastered: {len(mastered_titles)} | Seen in Session: {len(exclude_titles)}")
-        print(f"🤖 AI returned {len(recommendations)} candidates.")
+        print(f"✨ AI returned {len(recommendations)} candidates.")
 
         valid_recommendations: List[RecommendedProblem] = []
         for problem in recommendations:

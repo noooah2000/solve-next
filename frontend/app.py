@@ -25,7 +25,7 @@ def render_sidebar() -> str:
 
         page = st.radio(
             "Select a page:",
-            ["📝 Write Diary", "📊 History", "🗑️ Trash Bin", "🤖 AI Coach"],
+            ["📝 Write Diary", "📊 History", "🗑️ Trash Bin", "✨ AI Coach"],
             label_visibility="collapsed"
         )
 
@@ -75,7 +75,7 @@ def main() -> None:
     if page == "🗑️ Trash Bin":
         trash.show_trash_bin()
         return
-    if page == "🤖 AI Coach":
+    if page == "✨ AI Coach":
         coach.show_ai_coach()
         return
 
