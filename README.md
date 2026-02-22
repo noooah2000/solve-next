@@ -38,7 +38,7 @@ SolveNext replaces random problem-solving with an adaptive, AI-driven practice l
 
 ---
 
-### System Architecture
+## System Architecture
 
 ![SolveNext Architecture](./assets/SolveNext.drawio.png)
 
