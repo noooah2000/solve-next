@@ -5,7 +5,8 @@
 [![Track: AI Applications](https://img.shields.io/badge/Track-AI%20Applications-0aa)](https://example.com)
 
 > **The AI-Powered Coding Coach & Practice Engine.** > **Stop grinding blindly. Start practicing smartly.**
-
+> 
+[SolveNext Demo Video](https://www.youtube.com/watch?v=T2RkpJAlDSA)
 [![SolveNext Demo Video](./assets/Thumbnail.png)](https://www.youtube.com/watch?v=T2RkpJAlDSA)
 
 ---
